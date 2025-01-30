@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Airflow
+logs/
+airflow.db
+airflow.cfg
+webserver_config.py
+*.pid
+
+# Environment variables
+.env
+
+# System files
+.DS_Store
