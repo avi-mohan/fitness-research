@@ -15,19 +15,14 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__LOGGING__REMOTE_LOGGING=False
-      - AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER=
-      - AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID=
-      - AIRFLOW__LOGGING__DAG_FILE_PROCESSOR_LOG_TARGET=stdout
     volumes:
       - ./dags:/opt/airflow/dags
       - ./documents:/opt/airflow/documents
-      - ./logs:/opt/airflow/logs
     ports:
       - "8080:8080"
-      - "8793:8793"  # Add this port for log serving
     entrypoint: >
       bash -c "
+        pip install PyPDF2 &&
         airflow db init &&
         airflow users create --username admin --password admin --firstname Anonymous --lastname Admin --role Admin --email admin@example.com &&
         airflow webserver
@@ -41,15 +36,14 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__LOGGING__REMOTE_LOGGING=False
-      - AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER=
-      - AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID=
-      - AIRFLOW__LOGGING__DAG_FILE_PROCESSOR_LOG_TARGET=stdout
     volumes:
       - ./dags:/opt/airflow/dags
       - ./documents:/opt/airflow/documents
-      - ./logs:/opt/airflow/logs
-    command: airflow scheduler
+    command: >
+      bash -c "
+        pip install PyPDF2 &&
+        airflow scheduler
+      "
 
 volumes:
   postgres_data:

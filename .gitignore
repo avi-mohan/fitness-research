@@ -1,3 +1,5 @@
+# Create .gitignore file
+cat > .gitignore << EOL
 # Python
 __pycache__/
 *.py[cod]
@@ -10,8 +12,9 @@ airflow.cfg
 webserver_config.py
 *.pid
 
-# Environment variables
+# Environment
 .env
 
-# System files
+# System
 .DS_Store
+EOL
