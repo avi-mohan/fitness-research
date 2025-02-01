@@ -4,10 +4,14 @@ from datetime import datetime, timedelta
 import os
 import PyPDF2
 
+from airflow.models.dagrun import DagRun
+from airflow.utils.dates import days_ago
+
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
+    'start_date': days_ago(1),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
@@ -72,4 +76,7 @@ extract_text = PythonOperator(
 # Set task dependencies
 check_folder >> extract_text
 
-dag
+dag = dag
+
+if __name__ == "__main__":
+    dag.test()

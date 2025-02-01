@@ -1,49 +1,78 @@
+# Basic Airflow cluster configuration for CeleryExecutor
 version: '3'
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.7.1
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__FERNET_KEY: ''
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./documents:/opt/airflow/documents
+    - ./logs:/opt/airflow/logs
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on: &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
 services:
   postgres:
     image: postgres:13
     environment:
-      - POSTGRES_USER=airflow
-      - POSTGRES_PASSWORD=airflow
-      - POSTGRES_DB=airflow
-
-  webserver:
-    image: apache/airflow:2.7.1
-    depends_on:
-      - postgres
-    environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
     volumes:
-      - ./dags:/opt/airflow/dags
-      - ./documents:/opt/airflow/documents
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: bash -c "pip install PyPDF2 && airflow webserver"
     ports:
       - "8080:8080"
-    entrypoint: >
-      bash -c "
-        pip install PyPDF2 &&
-        airflow db init &&
-        airflow users create --username admin --password admin --firstname Anonymous --lastname Admin --role Admin --email admin@example.com &&
-        airflow webserver
-      "
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
 
-  scheduler:
-    image: apache/airflow:2.7.1
-    depends_on:
-      - webserver
-    environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./documents:/opt/airflow/documents
+  airflow-scheduler:
+    <<: *airflow-common
+    command: bash -c "pip install PyPDF2 && airflow scheduler"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
     command: >
-      bash -c "
-        pip install PyPDF2 &&
-        airflow scheduler
+      -c "
+      pip install PyPDF2 &&
+      airflow db init &&
+      airflow users create
+        --username admin
+        --firstname admin
+        --lastname admin
+        --role Admin
+        --email admin@example.com
+        --password admin
       "
+    environment:
+      <<: *airflow-common-env
 
 volumes:
-  postgres_data:
+  postgres-db-volume:
