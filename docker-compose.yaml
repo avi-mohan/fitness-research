@@ -1,78 +1,113 @@
-# Basic Airflow cluster configuration for CeleryExecutor
-version: '3'
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.7.1
+  build:
+    context: .
+    dockerfile: Dockerfile
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__FERNET_KEY: "UKMzEm3yIuFYEq1y3-2FxPNWSVwRASpahmQ9kQfEr6g="
+    AIRFLOW__WEBSERVER__SECRET_KEY: "YourSecretKeyHere123"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__ENABLE_XCOM_PICKLING: "true"
+    AIRFLOW__WEBSERVER__WORKERS: "2"
+    AIRFLOW__WEBSERVER__WORKER_TIMEOUT: "300"
   volumes:
     - ./dags:/opt/airflow/dags
-    - ./documents:/opt/airflow/documents
     - ./logs:/opt/airflow/logs
-  user: "${AIRFLOW_UID:-50000}:0"
-  depends_on: &airflow-common-depends-on
+    - ./plugins:/opt/airflow/plugins
+    - ./documents:/opt/airflow/documents
+  depends_on:
     postgres:
       condition: service_healthy
 
 services:
   postgres:
     image: postgres:13
+    container_name: postgres
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
       interval: 10s
       retries: 5
       start_period: 5s
-    restart: always
+
+  weaviate:
+    image: semitechnologies/weaviate:1.23.0
+    container_name: weaviate
+    ports:
+      - "8087:8080"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      CLUSTER_HOSTNAME: 'node1'
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--spider", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   airflow-webserver:
     <<: *airflow-common
-    command: bash -c "pip install PyPDF2 && airflow webserver"
+    container_name: airflow-webserver
+    command: airflow webserver
     ports:
       - "8080:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
-      timeout: 10s
+      timeout: 30s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   airflow-scheduler:
     <<: *airflow-common
-    command: bash -c "pip install PyPDF2 && airflow scheduler"
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+    container_name: airflow-scheduler
+    command: bash -c "sleep 10 && airflow scheduler"
     restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   airflow-init:
     <<: *airflow-common
+    container_name: airflow-init
     entrypoint: /bin/bash
     command: >
-      -c "
-      pip install PyPDF2 &&
-      airflow db init &&
-      airflow users create
-        --username admin
-        --firstname admin
-        --lastname admin
-        --role Admin
-        --email admin@example.com
-        --password admin
-      "
-    environment:
-      <<: *airflow-common-env
+      -c "sleep 10 &&
+          airflow db migrate &&
+          airflow users create --username admin --firstname admin --lastname admin --role Admin --email admin@example.com --password admin &&
+          airflow connections add postgres_default --conn-type postgres --conn-login airflow --conn-password airflow --conn-host postgres --conn-port 5432 --conn-schema airflow"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: 
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: fitness-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - weaviate
+    restart: always
 
 volumes:
   postgres-db-volume:
+  weaviate_data:

@@ -1,0 +1,4 @@
+PyPDF2>=3.0.1
+weaviate-client>=3.24.1
+scikit-learn>=1.0.0
+numpy>=1.21.0
